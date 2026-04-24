@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Tableur</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #fff; color: #1a1a1a; font-size: 13px; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+
+#toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-bottom: 1px solid #ccc; background: #f8f8f8; flex-shrink: 0; }
+.tb-btn { padding: 3px 10px; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer; font-size: 12px; color: #333; font-family: Arial; }
+.tb-btn:hover { background: #e8e8e8; }
+.tb-sep { width: 1px; background: #ccc; height: 20px; margin: 0 4px; }
+#font-size-sel { font-size: 12px; border: 1px solid #ccc; border-radius: 3px; padding: 2px 4px; height: 24px; }
+.tb-btn.active { background: #d0e4f7; border-color: #1a73e8; }
+
+#formula-bar { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-bottom: 1px solid #ccc; background: #fff; flex-shrink: 0; }
+#cell-ref { width: 55px; padding: 2px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px; text-align: center; background: #fff; font-family: Arial; }
+#fx-label { color: #888; font-size: 13px; font-style: italic; padding: 0 4px; }
+#formula-input { flex: 1; padding: 2px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px; font-family: Arial; outline: none; }
+#formula-input:focus { border-color: #1a73e8; }
+
+#grid-wrap { flex: 1; overflow: auto; position: relative; }
+table { border-collapse: collapse; }
+.col-header { background: #f5f5f5; border: 1px solid #c0c0c0; text-align: center; font-size: 12px; color: #555; font-weight: normal; padding: 2px 0; position: sticky; top: 0; z-index: 2; min-width: 80px; height: 20px; cursor: pointer; }
+.row-header { background: #f5f5f5; border: 1px solid #c0c0c0; text-align: center; font-size: 12px; color: #555; font-weight: normal; position: sticky; left: 0; z-index: 3; width: 36px; cursor: pointer; }
+.corner { position: sticky; top: 0; left: 0; z-index: 4; background: #f5f5f5; border: 1px solid #c0c0c0; width: 36px; height: 20px; }
+.col-header.sel, .row-header.sel { background: #1a73e8; color: #fff; }
+.col-header.hl, .row-header.hl { background: #d8e9f8; color: #1a1a1a; font-weight: 500; }
+
+td.cell { border: 1px solid #d0d0d0; min-width: 80px; height: 21px; padding: 0; position: relative; cursor: cell; }
+td.cell.selected { outline: 2px solid #1a73e8; outline-offset: -2px; z-index: 1; background: #fff; }
+td.cell.ref-hover { background: #e8f4fd; outline: 1px dashed #1a73e8; outline-offset: -1px; }
+
+/* Coloration des plages référencées pendant l'édition - 8 couleurs */
+td.cell.ref-0 { background: rgba(26,115,232,0.12); outline: 2px solid #1a73e8; outline-offset:-2px; z-index:1; }
+td.cell.ref-1 { background: rgba(234,67,53,0.12);  outline: 2px solid #ea4335; outline-offset:-2px; z-index:1; }
+td.cell.ref-2 { background: rgba(52,168,83,0.12);  outline: 2px solid #34a853; outline-offset:-2px; z-index:1; }
+td.cell.ref-3 { background: rgba(251,188,4,0.12);  outline: 2px solid #fbbc04; outline-offset:-2px; z-index:1; }
+td.cell.ref-4 { background: rgba(171,71,188,0.12); outline: 2px solid #ab47bc; outline-offset:-2px; z-index:1; }
+td.cell.ref-5 { background: rgba(0,172,193,0.12);  outline: 2px solid #00acc1; outline-offset:-2px; z-index:1; }
+td.cell.ref-6 { background: rgba(255,112,67,0.12); outline: 2px solid #ff7043; outline-offset:-2px; z-index:1; }
+td.cell.ref-7 { background: rgba(124,179,66,0.12); outline: 2px solid #7cb342; outline-offset:-2px; z-index:1; }
+
+/* Token coloré dans la barre de formule */
+.ref-token { border-radius: 2px; padding: 0 2px; font-weight: 500; cursor: pointer; }
+.ref-token-0 { background:#d0e4fc; color:#1a73e8; }
+.ref-token-1 { background:#fcd0ce; color:#c5221f; }
+.ref-token-2 { background:#ceead6; color:#137333; }
+.ref-token-3 { background:#fef3c7; color:#a16207; }
+.ref-token-4 { background:#edd6f3; color:#7b1fa2; }
+.ref-token-5 { background:#cef5f9; color:#00838f; }
+.ref-token-6 { background:#fdddd0; color:#bf360c; }
+.ref-token-7 { background:#dcedc8; color:#558b2f; }
+
+.cell-display { width: 100%; height: 100%; padding: 1px 3px; overflow: hidden; white-space: nowrap; font-size: 13px; line-height: 19px; }
+.cell-display.num { text-align: right; }
+.cell-display.err { color: #e24b4a; text-align: center; }
+
+.cell-editor { position: absolute; top: -1px; left: -1px; width: calc(100% + 2px); height: calc(100% + 2px); border: 2px solid #1a73e8; padding: 1px 3px; font-size: 13px; font-family: Arial; outline: none; z-index: 10; background: #fff; caret-color: #1a1a1a; }
+
+/* Affichage formule colorée au-dessus de la barre */
+#formula-display { display: none; align-items: center; gap: 6px; padding: 2px 8px; background: #fff; border-bottom: 1px solid #e8e8e8; font-size: 13px; min-height: 24px; flex-shrink: 0; }
+#formula-display.visible { display: flex; }
+
+#ctx { display: none; position: fixed; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 2px 2px 8px rgba(0,0,0,0.15); z-index: 100; min-width: 160px; font-size: 13px; }
+#ctx div { padding: 6px 16px; cursor: pointer; }
+#ctx div:hover { background: #f0f0f0; }
+#ctx hr { border: none; border-top: 1px solid #eee; margin: 2px 0; }
+
+/* Mode saisie formule : curseur en croix sur les cellules */
+body.formula-mode #grid-wrap { cursor: crosshair; }
+body.formula-mode td.cell { cursor: crosshair; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <select id="font-size-sel" onchange="applyFormat('size',this.value)">
+    <option value="11">11</option><option value="12">12</option>
+    <option value="13" selected>13</option><option value="14">14</option>
+    <option value="16">16</option><option value="18">18</option><option value="20">20</option>
+  </select>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-bold"   onclick="applyFormat('bold')"          ><b>G</b></button>
+  <button class="tb-btn" id="btn-italic" onclick="applyFormat('italic')"         ><i>I</i></button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="applyFormat('align','left')"   >&#8676;</button>
+  <button class="tb-btn" onclick="applyFormat('align','center')" >&#8596;</button>
+  <button class="tb-btn" onclick="applyFormat('align','right')"  >&#8677;</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="applyFormat('bg','#fff2cc')" style="background:#fff2cc;">A</button>
+  <button class="tb-btn" onclick="applyFormat('bg','#d9ead3')" style="background:#d9ead3;">A</button>
+  <button class="tb-btn" onclick="applyFormat('bg','#fce5cd')" style="background:#fce5cd;">A</button>
+  <button class="tb-btn" onclick="applyFormat('bg','')"        >✕</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="addRows()">+ lignes</button>
+</div>
+
+<div id="formula-bar">
+  <input id="cell-ref" readonly value="A1" />
+  <span id="fx-label">fx</span>
+  <input id="formula-input" type="text" spellcheck="false" autocomplete="off" />
+</div>
+
+<div id="grid-wrap"><table id="grid"></table></div>
+
+<div id="ctx">
+  <div onclick="ctxAction('copy')">Copier</div>
+  <div onclick="ctxAction('paste')">Coller</div>
+  <div onclick="ctxAction('cut')">Couper</div>
+  <hr>
+  <div onclick="ctxAction('insrow')">Insérer une ligne</div>
+  <div onclick="ctxAction('delrow')">Supprimer la ligne</div>
+  <hr>
+  <div onclick="ctxAction('clear')">Effacer</div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────
+let ROWS=50, COLS=26;
+const data={}, fmt={};
+let selR=0, selC=0;
+let editing=false, editor=null;
+let clipboard=null;
+
+// Formula-picking mode
+let formulaMode=false;   // true when editing a formula and can click cells
+let pickStart=null;      // {r,c} when dragging a range
+let pickDragging=false;
+
+const COLORS=['#1a73e8','#ea4335','#34a853','#fbbc04','#ab47bc','#00acc1','#ff7043','#7cb342'];
+
+function colName(c){ return String.fromCharCode(65+c); }
+function cellId(r,c){ return colName(c)+(r+1); }
+function parseRef(ref){
+  const m=ref.trim().toUpperCase().match(/^([A-Z]+)(\d+)$/);
+  if(!m) return null;
+  const c=m[1].charCodeAt(0)-65, r=parseInt(m[2])-1;
+  if(r<0||r>=ROWS||c<0||c>=COLS) return null;
+  return {r,c};
+}
+function parseRange(ref){
+  const m=ref.trim().toUpperCase().match(/^([A-Z]+\d+):([A-Z]+\d+)$/);
+  if(!m) return null;
+  const a=parseRef(m[1]),b=parseRef(m[2]);
+  if(!a||!b) return null;
+  return {r1:Math.min(a.r,b.r),c1:Math.min(a.c,b.c),r2:Math.max(a.r,b.r),c2:Math.max(a.c,b.c)};
+}
+
+// ── Evaluate ─────────────────────────────────────────────────
+function resolveVal(token,visited){
+  token=token.trim();
+  const ref=parseRef(token);
+  if(ref){const v=evaluate(cellId(ref.r,ref.c),new Set(visited));const n=parseFloat(v);return isNaN(n)?0:n;}
+  return parseFloat(token)||0;
+}
+function expandRange(r1,r2,visited){
+  const a=parseRef(r1),b=parseRef(r2);if(!a||!b)return[];
+  const vals=[];
+  for(let r=Math.min(a.r,b.r);r<=Math.max(a.r,b.r);r++)
+    for(let c=Math.min(a.c,b.c);c<=Math.max(a.c,b.c);c++){
+      const v=evaluate(cellId(r,c),new Set(visited));const n=parseFloat(v);if(!isNaN(n))vals.push(n);
+    }
+  return vals;
+}
+function expandArgs(args,visited){
+  const vals=[];
+  args.split(',').forEach(p=>{
+    p=p.trim();
+    const m=p.match(/^([A-Z]+\d+):([A-Z]+\d+)$/i);
+    if(m) vals.push(...expandRange(m[1].toUpperCase(),m[2].toUpperCase(),visited));
+    else{const n=resolveVal(p,visited);if(!isNaN(n))vals.push(n);}
+  });
+  return vals;
+}
+function evaluate(id,visited=new Set()){
+  if(visited.has(id)) return '#CIRC!';
+  const raw=data[id];
+  if(!raw||raw==='') return '';
+  if(!raw.startsWith('=')){const n=parseFloat(raw);return isNaN(n)?raw:n;}
+  visited.add(id);
+  let expr=raw.slice(1).toUpperCase();
+  const fns=[
+    [/\bSUM\(([^)]+)\)/g,    (_,a)=>expandArgs(a,visited).reduce((x,y)=>x+y,0)],
+    [/\bAVERAGE\(([^)]+)\)/g,(_,a)=>{const v=expandArgs(a,visited);return v.length?v.reduce((x,y)=>x+y,0)/v.length:0;}],
+    [/\bMIN\(([^)]+)\)/g,    (_,a)=>{const v=expandArgs(a,visited);return v.length?Math.min(...v):0;}],
+    [/\bMAX\(([^)]+)\)/g,    (_,a)=>{const v=expandArgs(a,visited);return v.length?Math.max(...v):0;}],
+    [/\bCOUNT\(([^)]+)\)/g,  (_,a)=>expandArgs(a,visited).length],
+    [/\bSQRT\(([^)]+)\)/g,   (_,a)=>Math.sqrt(resolveVal(a,visited))],
+    [/\bABS\(([^)]+)\)/g,    (_,a)=>Math.abs(resolveVal(a,visited))],
+    [/\bINT\(([^)]+)\)/g,    (_,a)=>Math.floor(resolveVal(a,visited))],
+    [/\bROUND\(([^,)]+),([^)]+)\)/g, (_,a,b)=>parseFloat(resolveVal(a,visited).toFixed(Math.max(0,parseInt(b))))],
+    [/\bROUNDUP\(([^,)]+),([^)]+)\)/g,(_,a,b)=>{const f=Math.pow(10,parseInt(b));return Math.ceil(resolveVal(a,visited)*f)/f;}],
+    [/\bROUNDDOWN\(([^,)]+),([^)]+)\)/g,(_,a,b)=>{const f=Math.pow(10,parseInt(b));return Math.floor(resolveVal(a,visited)*f)/f;}],
+    [/\bPOWER\(([^,)]+),([^)]+)\)/g,(_,a,b)=>Math.pow(resolveVal(a,visited),resolveVal(b,visited))],
+    [/\bMOD\(([^,)]+),([^)]+)\)/g,(_,a,b)=>resolveVal(a,visited)%resolveVal(b,visited)],
+    [/\bLOG\(([^,)]+),([^)]+)\)/g,(_,a,b)=>Math.log(resolveVal(a,visited))/Math.log(resolveVal(b,visited))],
+    [/\bLN\(([^)]+)\)/g,    (_,a)=>Math.log(resolveVal(a,visited))],
+    [/\bEXP\(([^)]+)\)/g,   (_,a)=>Math.exp(resolveVal(a,visited))],
+    [/\bPI\(\)/g,            ()=>Math.PI],
+    [/\bSIN\(([^)]+)\)/g,   (_,a)=>Math.sin(resolveVal(a,visited))],
+    [/\bCOS\(([^)]+)\)/g,   (_,a)=>Math.cos(resolveVal(a,visited))],
+    [/\bTAN\(([^)]+)\)/g,   (_,a)=>Math.tan(resolveVal(a,visited))],
+    [/\bIF\(([^,)]+),([^,)]+),([^)]+)\)/g,(_,cond,t,f)=>{
+      let c=cond.trim().replace(/([A-Z]+\d+)/g,ref=>{const v=evaluate(ref,new Set(visited));return typeof v==='number'?v:(parseFloat(v)||0);});
+      let res;try{res=Function('"use strict";return('+c+')')();}catch(e){res=false;}
+      return res?resolveVal(t.trim(),visited):resolveVal(f.trim(),visited);
+    }],
+  ];
+  fns.forEach(([re,fn])=>{expr=expr.replace(re,fn);});
+  expr=expr.replace(/([A-Z]+\d+)/g,ref=>{
+    const v=evaluate(ref,new Set(visited));
+    if(typeof v==='number') return v;
+    const n=parseFloat(v);return isNaN(n)?0:n;
+  });
+  expr=expr.replace(/\^/g,'**');
+  try{
+    const result=Function('"use strict";return('+expr+')')();
+    if(typeof result==='number'&&!isFinite(result)) return '#DIV/0!';
+    return result;
+  }catch(e){return '#ERR!';}
+}
+
+function fmtNum(n){
+  if(!isFinite(n)) return '#DIV/0!';
+  if(Number.isInteger(n)) return n.toLocaleString('fr-FR');
+  return parseFloat(n.toFixed(10)).toLocaleString('fr-FR');
+}
+function displayValue(id){
+  const raw=data[id];
+  if(!raw||raw==='') return{text:'',isNum:false,isErr:false};
+  if(!raw.startsWith('=')){const n=parseFloat(raw);if(!isNaN(n)&&raw.trim()!=='')return{text:fmtNum(n),isNum:true,isErr:false};return{text:raw,isNum:false,isErr:false};}
+  const val=evaluate(id);
+  if(typeof val==='string'&&val.startsWith('#')) return{text:val,isNum:false,isErr:true};
+  if(typeof val==='number') return{text:fmtNum(val),isNum:true,isErr:false};
+  return{text:String(val),isNum:false,isErr:false};
+}
+
+// ── Grid ─────────────────────────────────────────────────────
+function buildGrid(){
+  const table=document.getElementById('grid');
+  let html='<thead><tr><th class="corner"></th>';
+  for(let c=0;c<COLS;c++) html+=`<th class="col-header" id="ch-${c}">${colName(c)}</th>`;
+  html+='</tr></thead><tbody>';
+  for(let r=0;r<ROWS;r++){
+    html+=`<tr><th class="row-header" id="rh-${r}">${r+1}</th>`;
+    for(let c=0;c<COLS;c++) html+=`<td class="cell" id="c-${r}-${c}"><div class="cell-display" id="d-${r}-${c}"></div></td>`;
+    html+='</tr>';
+  }
+  html+='</tbody>';
+  table.innerHTML=html;
+  attachEvents();
+}
+function addRows(){
+  const tbody=document.querySelector('#grid tbody');
+  const start=ROWS; ROWS+=10;
+  for(let r=start;r<ROWS;r++){
+    const tr=document.createElement('tr');
+    let html=`<th class="row-header" id="rh-${r}">${r+1}</th>`;
+    for(let c=0;c<COLS;c++) html+=`<td class="cell" id="c-${r}-${c}"><div class="cell-display" id="d-${r}-${c}"></div></td>`;
+    tr.innerHTML=html; tbody.appendChild(tr);
+  }
+  attachEvents();
+}
+
+function attachEvents(){
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const td=document.getElementById(`c-${r}-${c}`);
+    if(!td||td._ev) continue; td._ev=true;
+    td.addEventListener('mousedown',e=>{
+      if(e.button===2) return;
+      e.preventDefault();
+      if(formulaMode){
+        // Start picking
+        pickStart={r,c}; pickDragging=true;
+        insertRefInFormula(r,c,r,c);
+      } else {
+        commitEdit(); selectCell(r,c);
+      }
+    });
+    td.addEventListener('mouseover',e=>{
+      if(formulaMode&&pickDragging&&pickStart){
+        insertRefInFormula(pickStart.r,pickStart.c,r,c);
+      }
+    });
+    td.addEventListener('mouseup',e=>{
+      if(formulaMode&&pickDragging){ pickDragging=false; focusEditor(); }
+    });
+    td.addEventListener('dblclick',()=>{ if(!formulaMode) startEdit(r,c); });
+    td.addEventListener('contextmenu',e=>{ e.preventDefault(); if(!formulaMode){selectCell(r,c);showCtx(e.clientX,e.clientY);} });
+  }
+}
+
+// ── Formula picking ──────────────────────────────────────────
+function enterFormulaMode(){
+  formulaMode=true;
+  document.body.classList.add('formula-mode');
+}
+function exitFormulaMode(){
+  formulaMode=false; pickDragging=false; pickStart=null;
+  document.body.classList.remove('formula-mode');
+  clearRefHighlights();
+}
+
+// Insert or replace the "pending" ref token at cursor position in editor
+let pendingRefStart=-1, pendingRefEnd=-1; // positions in editor.value
+
+function insertRefInFormula(r1,c1,r2,c2){
+  const refStr = (r1===r2&&c1===c2) ? cellId(r1,c1) : (cellId(Math.min(r1,r2),Math.min(c1,c2))+':'+cellId(Math.max(r1,r2),Math.max(c1,c2)));
+  const ed = editor || document.getElementById('formula-input');
+  const val = ed.value;
+  if(pendingRefStart>=0){
+    ed.value = val.slice(0,pendingRefStart) + refStr + val.slice(pendingRefEnd);
+    pendingRefEnd = pendingRefStart + refStr.length;
+  } else {
+    const pos = ed.selectionStart;
+    ed.value = val.slice(0,pos) + refStr + val.slice(pos);
+    pendingRefStart = pos;
+    pendingRefEnd = pos + refStr.length;
+  }
+  document.getElementById('formula-input').value = ed.value;
+  highlightRefs(ed.value);
+}
+
+function focusEditor(){
+  const ed = editor || document.getElementById('formula-input');
+  ed.focus();
+  try{ ed.setSelectionRange(pendingRefEnd,pendingRefEnd); }catch(e){}
+}
+
+// ── Ref highlighting ─────────────────────────────────────────
+function clearRefHighlights(){
+  document.querySelectorAll('.cell[class*="ref-"]').forEach(el=>{
+    el.className=el.className.replace(/\bref-\d\b/g,'').trim();
+  });
+}
+
+function highlightRefs(formula){
+  clearRefHighlights();
+  if(!formula||!formula.startsWith('=')) return;
+  const expr=formula.slice(1).toUpperCase();
+  const refs=[];
+  // Find ranges first, then singles
+  const rangeRe=/([A-Z]+\d+):([A-Z]+\d+)/g;
+  let m;
+  while((m=rangeRe.exec(expr))!==null) refs.push({type:'range',a:m[1],b:m[2],idx:refs.length%8});
+  // Singles not part of a range
+  const singleRe=/([A-Z]+\d+)(?!:)/g;
+  const rangeStr=expr.replace(rangeRe,'');
+  let m2;
+  while((m2=singleRe.exec(rangeStr))!==null) refs.push({type:'single',a:m2[1],idx:refs.length%8});
+
+  refs.forEach(ref=>{
+    if(ref.type==='single'){
+      const p=parseRef(ref.a);
+      if(p){ const td=document.getElementById(`c-${p.r}-${p.c}`); if(td) td.classList.add(`ref-${ref.idx}`); }
+    } else {
+      const rng=parseRange(ref.a+':'+ref.b);
+      if(rng){
+        for(let r=rng.r1;r<=rng.r2;r++) for(let c=rng.c1;c<=rng.c2;c++){
+          const td=document.getElementById(`c-${r}-${c}`); if(td) td.classList.add(`ref-${ref.idx}`);
+        }
+      }
+    }
+  });
+}
+
+// ── Selection ────────────────────────────────────────────────
+function selectCell(r,c){
+  document.querySelectorAll('.cell.selected').forEach(el=>el.classList.remove('selected'));
+  document.querySelectorAll('.col-header.sel,.row-header.sel').forEach(el=>el.classList.remove('sel'));
+  selR=r; selC=c;
+  document.getElementById(`c-${r}-${c}`)?.classList.add('selected');
+  document.getElementById(`ch-${c}`)?.classList.add('sel');
+  document.getElementById(`rh-${r}`)?.classList.add('sel');
+  const id=cellId(r,c);
+  document.getElementById('cell-ref').value=id;
+  document.getElementById('formula-input').value=data[id]||'';
+  updateToolbarState(id);
+  highlightRefs(data[id]||'');
+}
+
+function updateToolbarState(id){
+  const f=fmt[id]||{};
+  document.getElementById('btn-bold').classList.toggle('active',!!f.bold);
+  document.getElementById('btn-italic').classList.toggle('active',!!f.italic);
+  document.getElementById('font-size-sel').value=f.size||'13';
+}
+
+// ── Edit ─────────────────────────────────────────────────────
+function startEdit(r,c,initVal){
+  if(editing) commitEdit();
+  editing=true; selR=r; selC=c;
+  const td=document.getElementById(`c-${r}-${c}`);
+  const id=cellId(r,c);
+  editor=document.createElement('input');
+  editor.type='text'; editor.className='cell-editor'; editor.spellcheck=false; editor.autocomplete='off';
+  const startVal=initVal!==undefined?initVal:(data[id]||'');
+  editor.value=startVal;
+  td.appendChild(editor); editor.focus();
+  editor.selectionStart=editor.selectionEnd=editor.value.length;
+
+  // Check if we're already in formula mode
+  if(startVal.startsWith('=')) { enterFormulaMode(); pendingRefStart=-1; pendingRefEnd=-1; highlightRefs(startVal); }
+
+  editor.oninput=()=>{
+    const v=editor.value;
+    document.getElementById('formula-input').value=v;
+    if(v.startsWith('=')){
+      if(!formulaMode){ enterFormulaMode(); pendingRefStart=-1; pendingRefEnd=-1; }
+      highlightRefs(v);
+    } else {
+      if(formulaMode) exitFormulaMode();
+    }
+    // Reset pending ref when user types (not clicking)
+    pendingRefStart=-1; pendingRefEnd=-1;
+  };
+
+  editor.onkeydown=e=>{
+    if(formulaMode&&(e.key==='ArrowUp'||e.key==='ArrowDown'||e.key==='ArrowLeft'||e.key==='ArrowRight')){
+      // Let arrows move ref selection in formula mode
+      // (we'll let default behavior move cursor in input)
+      return;
+    }
+    if(e.key==='Enter'){ e.preventDefault(); commitEdit(); selectCell(Math.min(selR+1,ROWS-1),selC); }
+    if(e.key==='Escape'){ exitFormulaMode(); editor.remove(); editor=null; editing=false; clearRefHighlights(); refreshCell(cellId(selR,selC)); }
+    if(e.key==='Tab'){ e.preventDefault(); commitEdit(); selectCell(selR,Math.min(selC+1,COLS-1)); }
+    // Any key that is not a ref-navigation key → reset pending
+    if(e.key.length===1||e.key==='Backspace'||e.key==='Delete'){
+      pendingRefStart=-1; pendingRefEnd=-1;
+    }
+  };
+}
+
+function commitEdit(){
+  if(!editing||!editor) return;
+  exitFormulaMode();
+  const id=cellId(selR,selC);
+  const val=editor.value;
+  if(val.trim()==='') delete data[id]; else data[id]=val;
+  editor.remove(); editor=null; editing=false;
+  clearRefHighlights();
+  refreshAll();
+}
+
+// ── Format ───────────────────────────────────────────────────
+function applyFormat(type,val){
+  const id=cellId(selR,selC);
+  if(!fmt[id]) fmt[id]={};
+  if(type==='bold')   fmt[id].bold=!fmt[id].bold;
+  if(type==='italic') fmt[id].italic=!fmt[id].italic;
+  if(type==='align')  fmt[id].align=val;
+  if(type==='bg')     fmt[id].bg=val;
+  if(type==='size')   fmt[id].size=val;
+  refreshCell(id); updateToolbarState(id);
+}
+
+// ── Refresh ──────────────────────────────────────────────────
+function refreshCell(id){
+  const ref=parseRef(id); if(!ref) return;
+  const el=document.getElementById(`d-${ref.r}-${ref.c}`); if(!el) return;
+  const {text,isNum,isErr}=displayValue(id);
+  el.textContent=text;
+  const f=fmt[id]||{};
+  el.className='cell-display'+(isErr?' err':isNum&&!f.align?' num':'');
+  el.style.fontWeight=f.bold?'bold':'';
+  el.style.fontStyle=f.italic?'italic':'';
+  el.style.fontSize=f.size?(f.size+'px'):'';
+  el.style.background=f.bg||'';
+  el.style.textAlign=f.align||(isNum&&!isErr?'right':'');
+}
+function refreshAll(){
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) refreshCell(cellId(r,c));
+  document.getElementById('formula-input').value=data[cellId(selR,selC)]||'';
+}
+
+// ── Formula bar ──────────────────────────────────────────────
+const fi=document.getElementById('formula-input');
+fi.addEventListener('focus',()=>{ fi.value=data[cellId(selR,selC)]||''; highlightRefs(fi.value); });
+fi.addEventListener('input',()=>{
+  const v=fi.value;
+  if(v.startsWith('=')){
+    if(!formulaMode){ enterFormulaMode(); pendingRefStart=-1; pendingRefEnd=-1; }
+    highlightRefs(v);
+  } else { if(formulaMode) exitFormulaMode(); }
+  pendingRefStart=-1; pendingRefEnd=-1;
+  if(!editing){ const id=cellId(selR,selC); if(v.trim()==='') delete data[id]; else data[id]=v; refreshAll(); }
+  else if(editor) editor.value=v;
+});
+fi.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    const id=cellId(selR,selC);
+    const v=fi.value;
+    if(v.trim()==='') delete data[id]; else data[id]=v;
+    exitFormulaMode(); clearRefHighlights(); refreshAll(); fi.blur();
+  }
+  if(e.key==='Escape'){ fi.value=data[cellId(selR,selC)]||''; exitFormulaMode(); clearRefHighlights(); fi.blur(); }
+  pendingRefStart=-1; pendingRefEnd=-1;
+});
+
+// ── Global keyboard ──────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  if(editing) return;
+  if(document.activeElement===fi) return;
+  const nav={ArrowUp:[-1,0],ArrowDown:[1,0],ArrowLeft:[0,-1],ArrowRight:[0,1]};
+  if(nav[e.key]){ e.preventDefault(); const [dr,dc]=nav[e.key]; selectCell(Math.max(0,Math.min(ROWS-1,selR+dr)),Math.max(0,Math.min(COLS-1,selC+dc))); return; }
+  if(e.key==='Delete'||e.key==='Backspace'){ delete data[cellId(selR,selC)]; clearRefHighlights(); refreshAll(); return; }
+  if(e.key==='F2'){ startEdit(selR,selC); return; }
+  if(e.key==='Enter'){ startEdit(selR,selC); return; }
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='c'){ const id=cellId(selR,selC); clipboard={val:data[id]||'',fmt:JSON.parse(JSON.stringify(fmt[id]||{}))}; return; }
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v'){ if(clipboard){const id=cellId(selR,selC);data[id]=clipboard.val;fmt[id]=JSON.parse(JSON.stringify(clipboard.fmt));refreshAll();} return; }
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='x'){ const id=cellId(selR,selC);clipboard={val:data[id]||'',fmt:JSON.parse(JSON.stringify(fmt[id]||{}))};delete data[id];refreshAll(); return; }
+  if(e.key.length===1&&!e.ctrlKey&&!e.metaKey){ startEdit(selR,selC,e.key); }
+});
+
+// Stop drag outside grid
+document.addEventListener('mouseup',()=>{ if(formulaMode&&pickDragging){ pickDragging=false; focusEditor(); } });
+
+// ── Context menu ─────────────────────────────────────────────
+function showCtx(x,y){ const m=document.getElementById('ctx'); m.style.display='block'; m.style.left=x+'px'; m.style.top=y+'px'; }
+document.addEventListener('click',()=>{ document.getElementById('ctx').style.display='none'; });
+function ctxAction(a){
+  const id=cellId(selR,selC);
+  if(a==='copy')  clipboard={val:data[id]||'',fmt:JSON.parse(JSON.stringify(fmt[id]||{}))};
+  if(a==='cut')   {clipboard={val:data[id]||'',fmt:JSON.parse(JSON.stringify(fmt[id]||{}))};delete data[id];refreshAll();}
+  if(a==='paste') {if(clipboard){data[id]=clipboard.val;fmt[id]=JSON.parse(JSON.stringify(clipboard.fmt));refreshAll();}}
+  if(a==='clear') {delete data[id];refreshAll();}
+  if(a==='insrow'){for(let r=ROWS-1;r>selR;r--)for(let c=0;c<COLS;c++){const f=cellId(r-1,c),t=cellId(r,c);data[t]=data[f]||'';fmt[t]=JSON.parse(JSON.stringify(fmt[f]||{}));}for(let c=0;c<COLS;c++){delete data[cellId(selR,c)];delete fmt[cellId(selR,c)];}refreshAll();}
+  if(a==='delrow'){for(let r=selR;r<ROWS-1;r++)for(let c=0;c<COLS;c++){const f=cellId(r+1,c),t=cellId(r,c);data[t]=data[f]||'';fmt[t]=JSON.parse(JSON.stringify(fmt[f]||{}));}for(let c=0;c<COLS;c++){delete data[cellId(ROWS-1,c)];delete fmt[cellId(ROWS-1,c)];}refreshAll();}
+  document.getElementById('ctx').style.display='none';
+}
+
+buildGrid();
+selectCell(0,0);
+</script>
+</body>
+</html>
